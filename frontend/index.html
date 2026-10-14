@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>电商星系 · 数据可视化与AI决策平台</title>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="./config.js"></script>
+
+    <style>
+        /* ================== 1. 全局与布局 ================== */
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; }
+
+        .sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 80px; background: rgba(10, 20, 40, 0.6); backdrop-filter: blur(10px); border-right: 1px solid rgba(0, 255, 255, 0.2); z-index: 1000; display: flex; flex-direction: column; align-items: center; padding-top: 30px; transition: width 0.3s; }
+        .sidebar:hover { width: 220px; }
+
+        .nav-btn { width: 100%; height: 60px; display: flex; align-items: center; padding-left: 25px; color: #0ff; cursor: pointer; transition: 0.3s; text-decoration: none; position: relative; box-sizing: border-box; }
+        .nav-btn i { font-size: 24px; min-width: 30px; text-align: center; }
+        .nav-btn span { font-size: 16px; margin-left: 20px; opacity: 0; white-space: nowrap; transition: 0.3s; text-shadow: 0 0 5px #0ff; font-weight: bold; }
+        .sidebar:hover .nav-btn span { opacity: 1; }
+        .nav-btn:hover { background: rgba(0, 255, 255, 0.15); box-shadow: inset 3px 0 0 #0ff; }
+        .nav-btn.active { background: rgba(0, 255, 255, 0.3); box-shadow: inset 5px 0 0 #0ff; color: #fff; }
+
+        .content-area { position: absolute; left: 80px; top: 0; right: 0; bottom: 0; display: flex; justify-content: center; align-items: center; z-index: 100; pointer-events: none; }
+
+        .page-section { position: absolute; width: 85%; height: 85%; background: rgba(12, 24, 46, 0.75); border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 20px; box-shadow: 0 0 30px rgba(0, 255, 255, 0.1); backdrop-filter: blur(15px); padding: 30px; display: none; opacity: 0; transform: scale(0.8); transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1); pointer-events: auto; flex-direction: column; }
+        .page-section.active { display: flex; opacity: 1; transform: scale(1); }
+
+        .page-header { border-bottom: 2px solid rgba(0, 255, 255, 0.3); padding-bottom: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .page-header h2 { margin: 0; color: #fff; text-shadow: 0 0 10px #0ff; font-size: 28px; letter-spacing: 2px; }
+        .back-btn { padding: 5px 15px; border: 1px solid #0ff; color: #0ff; background: transparent; cursor: pointer; border-radius: 5px; transition: 0.3s; font-weight: bold;}
+        .back-btn:hover { background: #0ff; color: #000; }
+
+        .chart-container { flex: 1; width: 100%; height: 100%; border-radius: 10px; background: rgba(0, 0, 0, 0.3); padding: 10px; position: relative;}
+
+        .home-welcome { position: absolute; top: 50%; left: 55%; transform: translate(-50%, -50%); text-align: center; color: #fff; z-index: 50; transition: 0.8s; pointer-events: none; }
+        .home-welcome h1 { font-size: 60px; margin: 0; text-shadow: 0 0 20px rgba(0, 255, 255, 0.8); letter-spacing: 10px; }
+        .home-welcome p { font-size: 20px; color: #0ff; letter-spacing: 5px; margin-top: 10px; }
+        .home-welcome.hidden { opacity: 0; transform: translate(-50%, -50%) scale(1.5); filter: blur(10px); }
+
+        .kpi-wrapper { display: flex; justify-content: center; gap: 30px; margin-top: 40px; }
+        .kpi-card { background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); padding: 15px 30px; border-radius: 10px; text-shadow: 0 0 5px #0ff; }
+        .kpi-card h3 { margin: 0 0 10px 0; font-size: 16px; color: #aaa; }
+        .kpi-card p { margin: 0; font-size: 24px; color: #fff; font-weight: bold; }
+
+        /* ================== 2. 背景特效层 ================== */
+        #galaxyCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 1s; }
+        #galaxyCanvas.zoomed-in { transform: scale(4) rotate(20deg); opacity: 0; }
+
+        .planet-layer { position: fixed; top: 50%; left: 55%; transform: translate(-50%, -50%); width: 600px; height: 600px; z-index: 2; pointer-events: none; opacity: 0; transition: all 1s ease; }
+        .planet-layer.visible { opacity: 1; }
+
+        .planet { width: 100%; height: 100%; border-radius: 50%; position: absolute; animation: rotatePlanet 60s linear infinite; box-shadow: inset -40px -40px 100px rgba(0,0,0,0.9), 0 0 50px rgba(0,0,0,0.5); }
+        .planet-trend { background: radial-gradient(circle at 30% 30%, #4facfe, #00f2fe); box-shadow: 0 0 60px #4facfe; }
+        .planet-rank  { background: radial-gradient(circle at 30% 30%, #43e97b, #38f9d7); box-shadow: 0 0 60px #43e97b; }
+        .planet-user  { background: radial-gradient(circle at 30% 30%, #fa709a, #fee140); box-shadow: 0 0 60px #fa709a; }
+        .planet-pay   { background: radial-gradient(circle at 30% 30%, #a18cd1, #fbc2eb); box-shadow: 0 0 60px #a18cd1; }
+
+        .orbit-ring { position: absolute; top: 50%; left: 50%; width: 120%; height: 120%; border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; transform: translate(-50%, -50%) rotateX(75deg); animation: rotateRing 10s linear infinite; }
+
+        @keyframes rotatePlanet { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes rotateRing { from { transform: translate(-50%, -50%) rotateX(75deg) rotate(0deg); } to { transform: translate(-50%, -50%) rotateX(75deg) rotate(360deg); } }
+
+        /* ================== 3. 动态标签页(Tabs)样式 ================== */
+        .tab-bar { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(0, 255, 255, 0.2); padding-bottom: 8px; overflow-x: auto; scrollbar-width: thin;}
+        .tab-bar::-webkit-scrollbar { height: 6px; }
+        .tab-bar::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.3); border-radius: 3px; }
+        .tab-item { padding: 6px 16px; background: rgba(12, 24, 46, 0.8); border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 6px; color: #a5b4fc; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s; white-space: nowrap; font-size: 14px;}
+        .tab-item:hover { background: rgba(0, 255, 255, 0.15); color: #fff;}
+        .tab-item.active { background: rgba(0, 255, 255, 0.2); border-color: #0ff; color: #0ff; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,255,255,0.2);}
+        .tab-close { font-size: 12px; color: #64748b; padding: 2px; border-radius: 50%; transition: 0.3s;}
+        .tab-close:hover { color: #fff; background: #fb7185; }
+
+        /* ================== 4. 决策交互与洞察面板样式 ================== */
+        .insight-panel { padding: 20px; background: rgba(56, 189, 248, 0.05); border-left: 4px solid #38bdf8; border-radius: 8px; box-shadow: inset 0 0 20px rgba(56,189,248,0.05); overflow-y: auto; display: flex; flex-direction: column;}
+        .insight-panel h4 { margin: 0 0 15px 0; color: #38bdf8; font-size: 18px; display: flex; align-items: center; gap: 8px; border-bottom: 1px dashed rgba(56,189,248,0.3); padding-bottom: 10px;}
+        .ai-content { flex: 1; color: #e2e8f0; font-size: 14px; line-height: 1.8; margin-bottom: 20px; }
+        .ai-content strong { color: #34d399; font-weight: bold;}
+        .ai-content p { margin-top: 0; margin-bottom: 12px;}
+        .action-btn { background: #38bdf8; color: #000; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-bottom: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;}
+        .action-btn:hover { background: #0ea5e9; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(56,189,248,0.4); }
+        .action-btn.warning { background: #fb7185; }
+        .action-btn.warning:hover { background: #e11d48; box-shadow: 0 4px 10px rgba(251,113,133,0.4); }
+        .action-btn.warn-yellow { background: #fbbf24; color: #000;}
+        .action-btn.warn-yellow:hover { background: #f59e0b; box-shadow: 0 4px 10px rgba(251,191,36,0.4); }
+        .action-btn.outline { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; }
+        .action-btn.outline:hover { background: rgba(56,189,248,0.2); }
+
+        /* 🌟 表格样式优化 */
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; color: #fff; text-align: left; background: rgba(0,0,0,0.4); border-radius: 8px; overflow: hidden; table-layout: fixed; word-wrap: break-word; }
+        .data-table th, .data-table td { padding: 18px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle;}
+        .data-table th { background: rgba(56,189,248,0.15); color: #38bdf8; font-weight: bold; position: sticky; top: 0; z-index: 10;}
+
+        /* 🌟 风险等级色彩体系 */
+        .risk-high { color: #fb7185; font-weight: bold; font-size: 18px; text-shadow: 0 0 10px rgba(251,113,133,0.5);}
+        .risk-warn { color: #fbbf24; font-weight: bold; font-size: 18px; text-shadow: 0 0 10px rgba(251,191,36,0.5);}
+        .risk-low { color: #34d399; font-weight: bold; font-size: 18px;}
+
+        /* 🌟 AI分析结果专属框体 */
+        .ai-advice-box { background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); padding: 10px 15px; border-radius: 6px; font-size: 13px; line-height: 1.6; color: #e2e8f0; transition: all 0.3s;}
+        .ai-advice-box.loading { border-style: dashed; color: #94a3b8; }
+        .ai-advice-box.success { border-left: 3px solid #34d399; }
+
+        /* 定制滚动条外观 */
+        .table-wrapper { flex: 1; overflow-y: auto; padding-right: 5px; }
+        .table-wrapper::-webkit-scrollbar { width: 8px; }
+        .table-wrapper::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.2); border-radius: 4px; }
+        .table-wrapper::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    </style>
+</head>
+<body>
+
+    <!-- 背景层 -->
+    <canvas id="galaxyCanvas"></canvas>
+    <div id="planetContainer" class="planet-layer">
+        <div id="currentPlanet" class="planet"></div>
+        <div class="orbit-ring"></div>
+    </div>
+
+    <!-- 主页欢迎词与大数字KPI -->
+    <div id="homeText" class="home-welcome">
+        <h1>GALAXY DATA</h1>
+        <p>电商数据智能洞察与业务决策系统</p>
+        <div class="kpi-wrapper">
+            <div class="kpi-card"><h3>💰 总销售额</h3><p id="kpi-sales">加载中...</p></div>
+            <div class="kpi-card"><h3>📦 总订单量</h3><p id="kpi-orders">加载中...</p></div>
+            <div class="kpi-card"><h3>👥 用户数量</h3><p id="kpi-users">加载中...</p></div>
+        </div>
+    </div>
+
+    <!-- 左侧导航 -->
+    <div class="sidebar">
+        <!-- 🌟 修改处 1: "DY" 变更为 "功能" -->
+        <div style="margin-bottom: 40px; color: #fff; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #0ff;">功能</div>
+        <div class="nav-btn active" onclick="goHome()"><i class="fa-solid fa-globe"></i><span>系统主页</span></div>
+        <div class="nav-btn" onclick="openPage('trend', 'planet-trend')"><i class="fa-solid fa-chart-line"></i><span>趋势分析</span></div>
+        <div class="nav-btn" onclick="openPage('rank', 'planet-rank')"><i class="fa-solid fa-chart-column"></i><span>智能选品决策</span></div>
+        <div class="nav-btn" onclick="openPage('user', 'planet-user')"><i class="fa-solid fa-users"></i><span>用户画像</span></div>
+        <div class="nav-btn" onclick="openPage('pay', 'planet-pay')"><i class="fa-regular fa-credit-card"></i><span>支付分析</span></div>
+        <div class="nav-btn" onclick="openPage('predict', 'planet-user')" style="margin-top: 30px; border-top: 1px solid rgba(0,255,255,0.2);"><i class="fa-solid fa-robot" style="color:#fb7185;"></i><span style="color:#fb7185; text-shadow: 0 0 5px #fb7185;">智能流失预警</span></div>
+    </div>
+
+    <!-- 内容展示区 -->
+    <div class="content-area">
+        <div id="page-trend" class="page-section">
+            <div class="page-header">
+                <h2>📈 月度销售趋势监测</h2>
+                <button class="back-btn" onclick="goHome()">返回主页</button>
+            </div>
+            <div id="chart-trend" class="chart-container" style="cursor: pointer;"></div>
+        </div>
+
+        <div id="page-rank" class="page-section">
+            <div class="page-header"><h2>🏆 核心品类排行与 AI 智能决策</h2><button class="back-btn" onclick="goHome()">返回主页</button></div>
+
+            <div class="tab-bar" id="rank-tab-bar"></div>
+
+            <div style="display: flex; gap: 20px; flex: 1; height: calc(100% - 60px);">
+                <div id="chart-rank" class="chart-container" style="flex: 0.65;"></div>
+
+                <div class="insight-panel" style="flex: 0.35;">
+                    <h4 id="ai-title"><i class="fa-solid fa-brain"></i> AI 实时大模型洞察</h4>
+                    <div id="ai-content" class="ai-content">
+                        <p style="color:#64748b; text-align:center; margin-top:30px;">等待接入数据流...</p>
+                    </div>
+
+                    <div style="margin-top: auto; border-top: 1px solid rgba(56,189,248,0.2); padding-top: 15px;">
+                        <button class="action-btn" onclick="alert('✅ 模拟系统交互成功！\n已自动生成采购需求，并向 ERP 系统发送热销品补货申请。')"><i class="fa-solid fa-truck-fast"></i> 一键生成采买进货单</button>
+                        <button class="action-btn outline" onclick="alert('✅ 模拟系统交互成功！\n已生成滞销品清仓方案，并推送至商城首页。')"><i class="fa-solid fa-tags"></i> 生成清仓促销方案</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-user" class="page-section" style="flex-direction: row; gap: 20px;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+                <h3 style="color:#fff; text-shadow:0 0 5px #0ff; margin-top:0;">性别分布</h3>
+                <div id="chart-gender" class="chart-container"></div>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column;">
+                <h3 style="color:#fff; text-shadow:0 0 5px #0ff; margin-top:0;">年龄段分布</h3>
+                <div id="chart-age" class="chart-container"></div>
+            </div>
+            <button class="back-btn" onclick="goHome()" style="position:absolute; top:30px; right:30px; z-index: 100;">返回主页</button>
+        </div>
+
+        <div id="page-pay" class="page-section">
+            <div class="page-header"><h2>💳 全渠道支付偏好洞察</h2><button class="back-btn" onclick="goHome()">返回主页</button></div>
+            <div id="chart-pay" class="chart-container"></div>
+        </div>
+
+        <div id="page-predict" class="page-section">
+            <!-- 🌟 修改处 2: 去掉标题中的括号内容 -->
+            <div class="page-header"><h2>🔮 客户流失预警模型拦截</h2><button class="back-btn" onclick="goHome()">返回主页</button></div>
+
+            <div class="insight-panel" style="margin-bottom: 15px; padding: 15px 20px;">
+                <h4><i class="fa-solid fa-satellite-dish"></i> 业务预警监控与大模型干预系统</h4>
+                <!-- 🌟 修改处 3: 增加 color: #fff; 让黑色说明文字变成清晰的白色 -->
+                <p style="margin-bottom: 10px; color: #fff; line-height: 1.6;">系统后台已挂载清洗后的历史客群特征矩阵。您可以触发抽取真实数据库中的客户特征矩阵，调用 <strong>XGBoost 在线推理模型</strong>计算真实的流失概率，并由大模型并发生成针对性的单客专属挽留策略。</p>
+                <button class="action-btn" style="width: auto; padding: 8px 15px;" onclick="simulatePrediction()"><i class="fa-solid fa-microchip"></i> 运行真实流失预测模型 (API请求后端真实推演)</button>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 10%">真实客户 ID</th>
+                            <th style="width: 10%">距今未消费</th>
+                            <th style="width: 12%">历史消费总额</th>
+                            <th style="width: 10%">XGB流失率</th>
+                            <th style="width: 43%">大模型专属干预策略推演</th>
+                            <th style="width: 15%">动态业务触达</th>
+                        </tr>
+                    </thead>
+                    <tbody id="predict-tbody">
+                        <tr><td colspan="6" style="text-align:center; color:#64748b; padding: 40px;">等待系统指令：请点击上方按钮提取客群特征并向后端发起预测请求...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 1. 银河特效 =================
+        const canvas = document.getElementById('galaxyCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, particles =[];
+
+        function initGalaxy() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            particles =[];
+            for (let i = 0; i < 800; i++) {
+                particles.push({ x: Math.random() * width - width / 2, y: Math.random() * height - height / 2, z: Math.random() * width, char: Math.random() > 0.5 ? '1' : '0', speed: Math.random() * 2 + 0.5 });
+            }
+        }
+
+        function drawGalaxy() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#0ff'; ctx.font = '14px monospace';
+            ctx.save(); ctx.translate(width / 2, height / 2);
+            particles.forEach(p => {
+                const angle = 0.002 * p.speed;
+                const oldX = p.x, oldY = p.y;
+                p.x = oldX * Math.cos(angle) - oldY * Math.sin(angle);
+                p.y = oldX * Math.sin(angle) + oldY * Math.cos(angle);
+                const scale = 300 / (300 + p.z);
+                const alpha = (1 - Math.abs(p.x) / (width/1.5));
+                ctx.globalAlpha = alpha > 0 ? alpha : 0;
+                ctx.fillText(p.char, p.x / scale, p.y / scale);
+            });
+            ctx.restore(); requestAnimationFrame(drawGalaxy);
+        }
+        window.addEventListener('resize', initGalaxy); initGalaxy(); drawGalaxy();
+
+        // ================= 2. 全局状态与页面交互 =================
+        const galaxyBg = document.getElementById('galaxyCanvas');
+        const planetLayer = document.getElementById('planetContainer');
+        const homeText = document.getElementById('homeText');
+        const pages = document.querySelectorAll('.page-section');
+        const navBtns = document.querySelectorAll('.nav-btn');
+        let charts = {};
+
+        let rankTabs = [];
+        let activeRankTabId = null;
+        let globalRankData = null;
+
+        function openPage(pageId, planetClass) {
+            galaxyBg.classList.add('zoomed-in');
+            homeText.classList.add('hidden');
+            planetLayer.classList.add('visible');
+            document.getElementById('currentPlanet').className = 'planet ' + planetClass;
+            pages.forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + pageId).classList.add('active');
+            navBtns.forEach(btn => btn.classList.remove('active'));
+
+            const targetBtn = Array.from(navBtns).find(btn => btn.getAttribute('onclick').includes(`'${pageId}'`));
+            if(targetBtn) targetBtn.classList.add('active');
+
+            if(pageId !== 'predict') {
+                setTimeout(() => loadChart(pageId), 300);
+            }
+        }
+
+        function goHome() {
+            galaxyBg.classList.remove('zoomed-in');
+            homeText.classList.remove('hidden');
+            planetLayer.classList.remove('visible');
+            pages.forEach(p => p.classList.remove('active'));
+            navBtns.forEach(btn => btn.classList.remove('active'));
+            navBtns[0].classList.add('active');
+        }
+
+        function formatNum(num) { return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,'); }
+
+        fetch('/api/kpi').then(res => res.json()).then(data => {
+            if(data.code === 200) {
+                document.getElementById('kpi-sales').innerText = '¥ ' + formatNum(data.data.total_sales.toFixed(0));
+                document.getElementById('kpi-orders').innerText = formatNum(data.data.total_orders);
+                document.getElementById('kpi-users').innerText = formatNum(data.data.total_users);
+            }
+        }).catch(err => console.log("后端 API 未就绪"));
+
+
+        // ================= 3. 大模型 AI 调用模块 (用于选品图表) =================
+        async function fetchAIInsight(tabName, chartData) {
+            const aiContent = document.getElementById('ai-content');
+            const aiTitle = document.getElementById('ai-title');
+
+            const topCategories = chartData.slice(0, 3).map(i => `${i.category}(¥${(i.total_sales/10000).toFixed(0)}万)`).join('、');
+            const bottomCategory = chartData[chartData.length - 1];
+            const bottomText = `${bottomCategory.category}(¥${(bottomCategory.total_sales/10000).toFixed(0)}万)`;
+
+            aiTitle.innerHTML = `<i class="fa-solid fa-brain"></i> AI 实时洞察 - ${tabName}`;
+            aiContent.innerHTML = `<p style="color:#0ff; text-align:center; padding: 20px 0;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><br><br>大模型正在深度分析 <b>${tabName}</b> 销售数据...</p>`;
+
+            const prompt = `你是一个资深的电商数据分析专家。请根据以下【${tabName}】的商品品类销售状况，写一段简短、专业的业务洞察与决策建议。
+            分析数据依据：
+            - 热销品类前三名：${topCategories}
+            - 滞销垫底品类：${bottomText}
+
+            输出要求：
+            1. 语气专业且直接，每次分析请尽量从不同角度切入，避免格式千篇一律。总字数控制在 150 字左右。
+            2. 第一段写【分析结论】，第二段写【系统建议】（给出明确的备货或清仓策略）。
+            3. 使用 HTML 格式返回，只使用 <p> 和 <strong> 标签。重要的品类名请用 <strong> 包裹。`;
+
+            const url = typeof CONFIG !== 'undefined' ? CONFIG.API_URL : "";
+            const apiKey = typeof CONFIG !== 'undefined' ? CONFIG.API_KEY : "";
+            const modelName = typeof CONFIG !== 'undefined' ? CONFIG.API_MODEL : "gpt-5.4mini";
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                    body: JSON.stringify({
+                        model: modelName,
+                        messages: [
+                            { role: "system", content: "你是一个专业的电商数据分析AI助手，精通供应链调度与库存管理决策。" },
+                            { role: "user", content: prompt }
+                        ]
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP 状态码: ${response.status}`);
+                const resData = await response.json();
+                const resultText = resData.choices?.[0]?.message?.content;
+
+                if (resultText) {
+                    aiContent.innerHTML = resultText.replace(/```html/g, '').replace(/```/g, '');
+                } else {
+                    throw new Error("模型未返回有效内容");
+                }
+            } catch (err) {
+                console.error("AI 接口调用失败:", err);
+                aiContent.innerHTML = `
+                    <div style="margin-bottom: 10px;"><span style="color:#fb7185; font-size: 12px; border: 1px solid #fb7185; padding: 2px 6px; border-radius: 4px;">⚠️ API 调用失败，已启用离线专家策略</span></div>
+                    <p><strong>分析结论：</strong>根据 ${tabName} 的历史数据挖掘，<strong>${chartData[0].category}</strong> 与 <strong>${chartData[1].category}</strong> 贡献了最高比例的销售额，属于高价值核心品类。而 <strong>${bottomCategory.category}</strong> 销量出现严重停滞。</p>
+                    <p><strong>系统建议：</strong>针对高转化热销品类，建议立刻联系供应商补充当季爆款库存，预防断货断码；对于滞销品类，建议结合周末促销手段快速去库存，回笼资金流。</p>
+                `;
+            }
+        }
+
+
+        // ================= 4. 标签页 (Tab) 联动管理引擎 =================
+        function initRankTabs() {
+            if (rankTabs.length === 0 && globalRankData) {
+                rankTabs.push({ id: 'global', name: '全局历史总榜', data: globalRankData });
+                activeRankTabId = 'global';
+                renderRankTabs();
+                updateRankChartAndAI();
+            }
+        }
+
+        function renderRankTabs() {
+            const container = document.getElementById('rank-tab-bar');
+            container.innerHTML = '';
+
+            rankTabs.forEach(tab => {
+                const tabEl = document.createElement('div');
+                tabEl.className = `tab-item ${tab.id === activeRankTabId ? 'active' : ''}`;
+                tabEl.onclick = () => {
+                    activeRankTabId = tab.id;
+                    renderRankTabs();
+                    updateRankChartAndAI();
+                };
+
+                tabEl.innerHTML = `<i class="fa-solid fa-chart-simple"></i> ${tab.name}`;
+
+                if(tab.id !== 'global') {
+                    const closeBtn = document.createElement('i');
+                    closeBtn.className = 'fa-solid fa-xmark tab-close';
+                    closeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        closeRankTab(tab.id);
+                    };
+                    tabEl.appendChild(closeBtn);
+                }
+                container.appendChild(tabEl);
+            });
+        }
+
+        function closeRankTab(tabId) {
+            rankTabs = rankTabs.filter(t => t.id !== tabId);
+            if (activeRankTabId === tabId) {
+                activeRankTabId = 'global';
+                updateRankChartAndAI();
+            }
+            renderRankTabs();
+        }
+
+        function updateRankChartAndAI() {
+            const currentTab = rankTabs.find(t => t.id === activeRankTabId);
+            if (!currentTab || !charts['rank']) return;
+
+            charts['rank'].setOption({
+                xAxis: { data: currentTab.data.map(i=>i.category) },
+                series: [{ data: currentTab.data.map(i=>i.total_sales) }]
+            });
+
+            fetchAIInsight(currentTab.name, currentTab.data);
+        }
+
+        function mockMonthlyData(monthLabel) {
+            return globalRankData.map(item => ({
+                category: item.category,
+                total_sales: item.total_sales * (Math.random() * 0.15 + 0.02)
+            })).sort((a, b) => b.total_sales - a.total_sales);
+        }
+
+
+        // ================= 5. 数据加载与图表渲染 =================
+        function loadChart(type) {
+            if (charts[type]) { charts[type].resize(); }
+
+            if (type === 'trend') {
+                if (!charts['trend']) {
+                    const chart = echarts.init(document.getElementById('chart-trend')); charts['trend'] = chart;
+
+                    fetch('/api/trend').then(r=>r.json()).then(d => {
+                        let validData = d.data.slice(0, -1);
+                        let salesArr = validData.map(i=>i.sales);
+                        let monthArr = validData.map(i=>i.month);
+
+                        let markPointsData = [];
+                        let avgSales = salesArr.reduce((a,b)=>a+b, 0) / salesArr.length;
+                        let maxSales = Math.max(...salesArr);
+                        let minSales = Math.min(...salesArr);
+                        let upperThreshold = avgSales * 1.02;
+                        let lowerThreshold = avgSales * 0.98;
+
+                        let maxIndex = salesArr.indexOf(maxSales);
+                        let minIndex = salesArr.indexOf(minSales);
+
+                        for(let i = 1; i < salesArr.length - 1; i++) {
+                            if(salesArr[i] < salesArr[i-1] && salesArr[i] < salesArr[i+1] && salesArr[i] < lowerThreshold && salesArr[i] !== minSales) {
+                                markPointsData.push({ coord: [monthArr[i], salesArr[i]], value: salesArr[i], name: '低谷', monthLabel: monthArr[i], itemStyle: { color: '#fb7185' } });
+                            }
+                            if(salesArr[i] > salesArr[i-1] && salesArr[i] > salesArr[i+1] && salesArr[i] > upperThreshold && salesArr[i] !== maxSales) {
+                                markPointsData.push({ coord: [monthArr[i], salesArr[i]], value: salesArr[i], name: '高峰', monthLabel: monthArr[i], itemStyle: { color: '#34d399' } });
+                            }
+                        }
+
+                        markPointsData.push({ coord: [monthArr[maxIndex], maxSales], value: maxSales, name: '最高', monthLabel: monthArr[maxIndex], itemStyle: { color: '#10b981' } });
+                        markPointsData.push({ coord: [monthArr[minIndex], minSales], value: minSales, name: '最低', monthLabel: monthArr[minIndex], itemStyle: { color: '#e11d48' } });
+
+                        chart.setOption({
+                            backgroundColor: 'transparent', tooltip: { trigger: 'axis' },
+                            grid: { top: '15%', bottom: '10%', left: '5%', right: '5%', containLabel: true },
+                            visualMap: { show: false, pieces: [{ gt: 0, lte: avgSales * 0.96, color: '#ff4d4f' }, { gt: avgSales * 0.96, color: '#00f2fe' }], outOfRange: { color: '#999' } },
+                            xAxis: { type: 'category', data: monthArr, axisLabel: { color: '#fff' } },
+                            yAxis: { type: 'value', min: function (value) { return value.min - 400000; }, splitLine: { lineStyle: { color: 'rgba(0,255,255,0.2)' } }, axisLabel: { color: '#fff' } },
+                            series:[{
+                                type: 'line', smooth: true, data: salesArr, itemStyle: { color: '#00f2fe' },
+                                areaStyle: { opacity: 0.3, color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#4facfe'},{offset:1,color:'rgba(0,0,0,0)'}]) },
+                                markPoint: { symbolSize: 55, label: { color: '#fff', fontSize: 11, formatter: function(params) { return (params.value / 10000).toFixed(0) + 'W'; } }, data: markPointsData }
+                            }]
+                        });
+
+                        chart.on('click', function (params) {
+                            let clickedMonth = params.name;
+                            if (params.componentType === 'markPoint' && params.data && params.data.monthLabel) {
+                                clickedMonth = params.data.monthLabel;
+                            }
+                            if (!clickedMonth || !globalRankData) return;
+
+                            if (!rankTabs.find(t => t.id === clickedMonth)) {
+                                rankTabs.push({
+                                    id: clickedMonth,
+                                    name: `${clickedMonth} 专项诊断`,
+                                    data: mockMonthlyData(clickedMonth)
+                                });
+                            }
+
+                            activeRankTabId = clickedMonth;
+                            openPage('rank', 'planet-rank');
+                        });
+                    });
+                }
+            }
+            else if (type === 'rank') {
+                if (!charts['rank']) {
+                    charts['rank'] = echarts.init(document.getElementById('chart-rank'));
+                    charts['rank'].setOption({
+                        backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, grid: { containLabel: true, top: '15%', bottom: '0' },
+                        xAxis: { type: 'category', data: [], axisLabel: { color: '#fff', interval:0 } },
+                        yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { color: '#fff' } },
+                        series:[{ type: 'bar', data: [], itemStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#43e97b'},{offset:1,color:'#38f9d7'}]), borderRadius: [4, 4, 0, 0] }, label: { show: true, position: 'top', color: '#fff' } }]
+                    });
+                }
+
+                if (!globalRankData) {
+                    fetch('/api/rank').then(r=>r.json()).then(d => {
+                        globalRankData = d.data;
+                        initRankTabs();
+                    });
+                } else {
+                    renderRankTabs();
+                    updateRankChartAndAI();
+                }
+            }
+            else if (type === 'user') {
+                if(!charts['user']) {
+                    const chartGender = echarts.init(document.getElementById('chart-gender'));
+                    const chartAge = echarts.init(document.getElementById('chart-age'));
+                    charts['user'] = chartGender; charts['age'] = chartAge;
+
+                    fetch('/api/gender').then(r=>r.json()).then(d => {
+                        chartGender.setOption({
+                            backgroundColor: 'transparent', tooltip: { trigger: 'item' }, legend: { bottom: 0, textStyle: { color: '#fff' } },
+                            series:[{
+                                type: 'pie', radius:['40%', '70%'],
+                                data: d.data.map(i=>({name:i.gender, value:i.count})),
+                                color:['#fa709a', '#fee140'],
+                                label: {color: '#fff', formatter: '{b}: {c} ({d}%)'}
+                            }]
+                        });
+                    });
+
+                    fetch('/api/age').then(r=>r.json()).then(d => {
+                        const totalAgeUsers = d.data.reduce((sum, item) => sum + item.user_count, 0);
+                        chartAge.setOption({
+                            backgroundColor: 'transparent', tooltip: { trigger: 'axis' },
+                            xAxis: { type: 'category', data: d.data.map(i=>i.age_group), axisLabel: { color: '#fff' } },
+                            yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { color: '#fff' } },
+                            series:[{
+                                type: 'bar',
+                                data: d.data.map(i=>i.user_count),
+                                itemStyle: { color: '#fa709a', borderRadius:[4,4,0,0] },
+                                label: {
+                                    show: true,
+                                    position: 'top',
+                                    color: '#fff',
+                                    formatter: function(params) {
+                                        const percent = ((params.value / totalAgeUsers) * 100).toFixed(1);
+                                        return params.value + '\n(' + percent + '%)';
+                                    }
+                                }
+                            }]
+                        });
+                    });
+                }
+            }
+            else if (type === 'pay') {
+                if(!charts['pay']) {
+                    const chart = echarts.init(document.getElementById('chart-pay')); charts['pay'] = chart;
+                    fetch('/api/payment').then(r=>r.json()).then(d => {
+                        chart.setOption({
+                            backgroundColor: 'transparent', tooltip: { trigger: 'item' },
+                            series:[{
+                                type: 'pie',
+                                radius: ['20%', '70%'],
+                                roseType: 'area', center:['50%', '50%'],
+                                data: d.data.map(i=>({name:i.payment_method, value:i.usage_count})),
+                                itemStyle: { borderRadius: 8 },
+                                color:['#a18cd1', '#fbc2eb', '#8fd3f4', '#84fab0'],
+                                label: {color: '#fff', formatter: '{b}: {c} ({d}%)'}
+                            }]
+                        });
+                    });
+                }
+            }
+        }
+
+        window.onresize = function() { initGalaxy(); for(let k in charts) { charts[k].resize(); } };
+
+        // ================= 6. 🌟 方案B核心：前端真实接口联调 =================
+        async function simulatePrediction() {
+            const tbody = document.getElementById('predict-tbody');
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#38bdf8; padding:50px 0;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><br><br>正在通过 API 从后端真实读取存量客群，并喂入 XGBoost 模型进行推演...</td></tr>`;
+
+            try {
+                const res = await fetch('/api/predict_sample');
+                const result = await res.json();
+
+                if (result.code !== 200) {
+                    throw new Error(result.message);
+                }
+
+                const realData = result.data;
+                let html = '';
+
+                realData.forEach((item, index) => {
+                    let statusClass = 'risk-low';
+                    let actionBtn = '<button class="action-btn outline" onclick="alert(\'已纳入日常触达群组。\')">常规触达</button>';
+
+                    if (item.risk_val >= 80) { // 高危
+                        statusClass = 'risk-high';
+                        if (item.money_val > 5000) { // 高危且高净值
+                            actionBtn = '<button class="action-btn" onclick="alert(\'✅ 工单生成：专属 VIP 客服已接单。\')"><i class="fa-solid fa-headset"></i> 客服专调</button>';
+                        } else { // 高危普通客户
+                            actionBtn = '<button class="action-btn warning" onclick="alert(\'✅ 发送成功：已下发【无门槛回归神券】！\')"><i class="fa-solid fa-ticket"></i> 发券挽留</button>';
+                        }
+                    } else if (item.risk_val >= 50) { // 中危
+                        statusClass = 'risk-warn';
+                        actionBtn = '<button class="action-btn warn-yellow" onclick="alert(\'✅ 关怀送达：已发放双倍积分权！\')"><i class="fa-solid fa-crown"></i> 积分唤醒</button>';
+                    }
+
+                    html += `<tr style="background: rgba(255,255,255,0.02); transition: 0.3s;" onmouseover="this.style.background='rgba(56,189,248,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.02)'">
+                        <td>${item.id}</td>
+                        <td>${item.recency}</td>
+                        <td>${item.money}</td>
+                        <td class="${statusClass}">${item.risk}</td>
+                        <td>
+                            <div id="advice-cell-${index}" class="ai-advice-box loading">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i> 队列等待，大模型深度分析中...
+                            </div>
+                        </td>
+                        <td>${actionBtn}</td>
+                    </tr>`;
+                });
+                tbody.innerHTML = html;
+
+                realData.forEach((item, index) => {
+                    setTimeout(() => {
+                        fetchChurnAdvice(item, index);
+                    }, index * 400);
+                });
+
+            } catch (err) {
+                console.error("预测接口调用失败:", err);
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#fb7185; padding:50px 0;">⚠️ 后台数据连接失败，请确保 Flask 后端的 /api/predict_sample 接口正常运行并能读取特征文件。<br>详情: ${err.message}</td></tr>`;
+            }
+        }
+
+        // 向大模型请求单客专属挽留策略 (保持不变)
+        async function fetchChurnAdvice(customer, index) {
+            const cell = document.getElementById(`advice-cell-${index}`);
+            cell.innerHTML = `<i class="fa-solid fa-cog fa-spin"></i> 正在调用 API 思考对策...`;
+
+            const prompt = `你是一个高级电商运营专家。请针对以下客户数据，输出一套【多维度的挽留干预策略】：
+            - 距今未消费：${customer.recency}
+            - 历史总消费：${customer.money}
+            - XGBoost预测流失率：${customer.risk}
+
+            【核心要求】：
+            1. 不要说废话，直接给出2到3点具体的业务动作组合（如：主打什么利益点 + 用什么渠道触达 + 推荐什么类型的商品）。
+            2. 必须符合客户身价（高客单价给服务或上新特权，低客单价给折扣或清仓）。
+            3. 格式清晰，总字数控制在80字左右。
+            4. 请使用HTML的 <b> 标签加粗核心动作词汇，使用 <br> 标签进行换行。`;
+
+            const url = typeof CONFIG !== 'undefined' ? CONFIG.API_URL : "";
+            const apiKey = typeof CONFIG !== 'undefined' ? CONFIG.API_KEY : "";
+            const modelName = typeof CONFIG !== 'undefined' ? CONFIG.API_MODEL : "gpt-5.4mini";
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                    body: JSON.stringify({
+                        model: modelName,
+                        messages: [
+                            { role: "system", content: "你是一个专业的电商客户生命周期管理专家。" },
+                            { role: "user", content: prompt }
+                        ]
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                const advice = data.choices?.[0]?.message?.content;
+
+                if (advice) {
+                    cell.className = 'ai-advice-box success';
+                    const formattedAdvice = advice.replace(/\n/g, '');
+                    cell.innerHTML = `<span style="color: #34d399;"><i class="fa-solid fa-lightbulb"></i> 专属策略：</span><br>${formattedAdvice}`;
+                } else {
+                    throw new Error("No valid content");
+                }
+            } catch (error) {
+                console.error(`Row ${index} AI Fetch Error:`, error);
+
+                const riskVal = customer.risk_val;
+                const moneyVal = customer.money_val;
+                let fallback = "";
+
+                if (riskVal >= 80) {
+                    if (moneyVal > 10000) {
+                        fallback = "<b>高危VIP流失：</b>客户价值极高，建议立刻生成工单交由专属客服<b>1v1电话回访</b>，并赠送定制关怀礼包。";
+                    } else {
+                        fallback = "<b>强力挽留：</b>高危流失的长尾客户，建议系统自动发放<b>高额满减神券</b>或推送清仓捡漏短信刺激转化。";
+                    }
+                } else if (riskVal >= 50) {
+                    if (moneyVal > 5000) {
+                        fallback = "<b>中危优质客群：</b>复购频次下降，建议定向推送<b>新品优先体验权</b>或特权双倍积分活动。";
+                    } else {
+                        fallback = "<b>唤醒促活：</b>客户活跃度降低，建议结合其历史浏览偏好推送<b>针对性折扣短信</b>。";
+                    }
+                } else {
+                    fallback = "<b>健康客群：</b>当前状态稳定，保持常规的主题活动推送及节假日问候即可，<b>无需重度业务干预</b>。";
+                }
+
+                cell.className = 'ai-advice-box';
+                cell.style.borderColor = "rgba(251, 113, 133, 0.4)";
+                cell.innerHTML = `<span style="color: #fb7185;">[本地智能推荐]</span><br>${fallback}`;
+            }
+        }
+    </script>
+</body>
+</html>
